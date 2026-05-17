@@ -1,0 +1,8 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm exec next build",
+  "framework": "nextjs",
+  "env": {
+    "ENABLE_EXPERIMENTAL_COREPACK": "1"
+  }
+}

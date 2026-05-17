@@ -4,7 +4,32 @@
 
 仓库：[LisaLee1219/AL-aiagent](https://github.com/LisaLee1219/AL-aiagent)
 
-## GitHub 部署（推荐）
+## 让别人打开链接就能用（推荐：Vercel + GitHub）
+
+**说明**：GitHub 仓库本身只存代码、跑 CI，**不能**像网站一样 24 小时对外提供页面（GitHub Pages 只适合静态页，本项目的 AI / API / 登录用不了）。
+
+要 **公开链接**（例如 `https://al-aiagent.vercel.app`），用 **Vercel 关联本 GitHub 仓库**（免费）：
+
+### 三步部署公开站点
+
+1. 打开 **[Vercel 导入仓库](https://vercel.com/new/clone?repository-url=https://github.com/LisaLee1219/AL-aiagent)**，用 GitHub 登录并授权。
+2. 在 **Environment Variables** 里添加（与 `.env.example` 一致）：
+   - `SESSION_SECRET` — 随机长字符串
+   - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`
+   - `BC_ODATA_URL` / `BC_USERNAME` / `BC_PASSWORD`（可选，不配则用 mock）
+3. 点击 **Deploy**，约 2–5 分钟完成后会得到 **Production URL**，发给同事即可访问。
+
+之后每次 `git push` 到 `main`，Vercel 会 **自动重新部署**，链接不变。
+
+| 能力 | GitHub 仓库 | Vercel 公开链接 |
+|------|-------------|-----------------|
+| 存代码、CI | ✅ | — |
+| 别人浏览器直接打开 | ❌ | ✅ |
+| AI / API / 登录 | — | ✅ |
+
+---
+
+## GitHub Actions（CI + Docker 镜像）
 
 推送 `main` 分支后，GitHub Actions 会自动：
 
@@ -13,7 +38,7 @@
 
 镜像地址：`ghcr.io/lisalee1219/al-aiagent:latest`
 
-### 在服务器上运行（Docker）
+### 在自有服务器上运行（Docker）
 
 ```bash
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
