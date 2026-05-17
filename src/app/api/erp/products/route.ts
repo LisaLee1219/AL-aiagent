@@ -184,7 +184,7 @@ Rules:
     );
 
     // Parse AI response - extract JSON from potential markdown fences
-    let text = response.content.trim();
+    const text = response.content.trim();
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return candidates.slice(0, 5).map((p) => ({ ...p, relevanceScore: 50, relevanceReason: 'Default ranking' }));
 

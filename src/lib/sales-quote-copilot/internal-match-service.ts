@@ -268,7 +268,7 @@ export async function buildInternalMatchBundle(
         return { lines: [] as BCPurchaseLine[], diagnostics: [] as string[] };
       });
 
-      let bcSalesRaw = salesResult.lines;
+      const bcSalesRaw = salesResult.lines;
       let bcPurchasesRaw = purchaseResult.lines;
 
       if (bcSalesRaw.length === 0 && bcItemsRaw.length > 0) {

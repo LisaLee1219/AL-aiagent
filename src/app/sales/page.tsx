@@ -1052,7 +1052,7 @@ export default function SalesPage() {
                 </ScrollArea>
               ) : (
                 <div className="text-center py-8 text-muted-foreground text-sm">
-                  Click "Load Products" to fetch items from Business Central
+                  {`Click "Load Products" to fetch items from Business Central`}
                 </div>
               )}
             </CardContent>
