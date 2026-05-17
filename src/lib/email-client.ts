@@ -170,7 +170,7 @@ export async function fetchRecentEmails(count: number = 20): Promise<{
     
     const result = await graphRequest(endpoint) as GraphEmailResponse;
     
-    const emails: EmailMessage[] = (result.value || []).map(mapGraphEmail);
+    const emails: EmailMessage[] = (result.value || []).map((msg) => mapGraphEmail(msg, 'inbox'));
     
     return {
       success: true,
@@ -253,7 +253,7 @@ export async function fetchUnreadEmails(count: number = 20): Promise<{
     return {
       success: true,
       source: 'microsoft_graph',
-      data: (result.value || []).map(mapGraphEmail),
+      data: (result.value || []).map((msg) => mapGraphEmail(msg, 'inbox')),
     };
   } catch (error) {
     return {

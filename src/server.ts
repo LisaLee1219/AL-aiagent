@@ -9,7 +9,8 @@ import { parse } from 'url';
 import next from 'next';
 import { ensureEnvLoaded } from '@/lib/env-loader';
 
-const dev = process.env.COZE_PROJECT_ENV !== 'PROD';
+const dev =
+  process.env.NODE_ENV !== 'production' && process.env.COZE_PROJECT_ENV !== 'PROD';
 const hostname = process.env.HOSTNAME || 'localhost';
 const port = parseInt(
   process.env.PORT || process.env.DEPLOY_RUN_PORT || '5001',

@@ -1,8 +1,50 @@
 # projects
 
-这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目，由扣子编程 CLI 创建。
+这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目（AI Smart Office / Sales Quote Copilot）。
 
-## 快速开始
+仓库：[LisaLee1219/AL-aiagent](https://github.com/LisaLee1219/AL-aiagent)
+
+## GitHub 部署（推荐）
+
+推送 `main` 分支后，GitHub Actions 会自动：
+
+1. **CI**（`.github/workflows/ci.yml`）— 类型检查、Lint、`next build`
+2. **Docker 镜像**（`.github/workflows/deploy-ghcr.yml`）— 构建并推送到 GitHub Container Registry
+
+镜像地址：`ghcr.io/lisalee1219/al-aiagent:latest`
+
+### 在服务器上运行（Docker）
+
+```bash
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+docker pull ghcr.io/lisalee1219/al-aiagent:latest
+docker run -d --name al-aiagent -p 5001:5001 \
+  -e NODE_ENV=production \
+  -e SESSION_SECRET=your-secret \
+  -e OPENAI_API_KEY=sk-... \
+  -e OPENAI_BASE_URL=https://api.openai.com/v1 \
+  -e OPENAI_MODEL=gpt-4o-mini \
+  -e BC_ODATA_URL=... \
+  -e BC_USERNAME=... \
+  -e BC_PASSWORD=... \
+  ghcr.io/lisalee1219/al-aiagent:latest
+```
+
+浏览器访问：`http://服务器IP:5001`
+
+### 环境变量
+
+复制 `.env.example` 为参考，在 `docker run -e` 或宿主机环境中配置。勿将 `.env.local` 提交到 Git。
+
+### 本地开发（pnpm）
+
+```bash
+pnpm install
+cp .env.example .env.local   # 编辑填入密钥
+pnpm exec next dev -p 5001
+```
+
+## 扣子 / Coze 本地开发（可选）
 
 ### 启动开发服务器
 

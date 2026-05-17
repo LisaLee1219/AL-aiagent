@@ -1,0 +1,16 @@
+node_modules
+.next
+.pnpm-store
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+coverage
+dist
+tsconfig.tsbuildinfo
+.coze-logs
+README.md
+AGENTS.md
