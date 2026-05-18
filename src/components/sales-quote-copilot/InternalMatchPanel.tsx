@@ -17,6 +17,7 @@ import type { MatchCandidate } from '@/lib/sales-quote-copilot/types';
 import { confidenceTier, sourceBadgeLabel } from '@/lib/sales-quote-copilot/logic';
 import { MAX_PANEL_MATCHES, MIN_AI_MATCHES } from '@/lib/sales-quote-copilot/match-ranking';
 import {
+  Brain,
   ChevronDown,
   Loader2,
   Package,
@@ -24,6 +25,8 @@ import {
   Sparkles,
   TrendingUp,
 } from 'lucide-react';
+import { InternalMatchProgressPanel } from '@/components/sales-quote-copilot/InternalMatchProgressPanel';
+import type { InternalMatchLiveState } from '@/lib/sales-quote-copilot/internal-match-progress';
 
 const COLLAPSED_ROW_LIMIT = MIN_AI_MATCHES;
 
@@ -263,6 +266,17 @@ function MatchBundleCard({
       </aside>
 
       <div className="p-4 space-y-3 bg-card min-w-0">
+        {bundle.aiAnalysis && (
+          <div className="rounded-md border border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/25 dark:border-amber-900/40 px-3 py-2.5 text-xs">
+            <p className="font-semibold flex items-center gap-1.5 text-amber-900 dark:text-amber-100 mb-1">
+              <Brain className="h-3.5 w-3.5" />
+              AI analysis
+            </p>
+            <p className="leading-relaxed whitespace-pre-wrap text-foreground/90">
+              {bundle.aiAnalysis}
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {expanded
@@ -443,14 +457,32 @@ function MatchBundleCard({
 interface InternalMatchPanelProps {
   bundles: InternalMatchBundle[];
   loading?: boolean;
+  progress?: InternalMatchLiveState | null;
   onSelectCandidate: (lineId: string, candidateId: string, selected: boolean) => void;
 }
 
 export function InternalMatchPanel({
   bundles,
   loading,
+  progress,
   onSelectCandidate,
 }: InternalMatchPanelProps) {
+  if (loading && progress) {
+    return (
+      <div className="space-y-6">
+        <InternalMatchProgressPanel progress={progress} />
+        {bundles.length > 0 &&
+          bundles.map((bundle) => (
+            <MatchBundleCard
+              key={bundle.lineId}
+              bundle={bundle}
+              onSelectCandidate={onSelectCandidate}
+            />
+          ))}
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">

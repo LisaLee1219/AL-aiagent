@@ -1,4 +1,4 @@
-import { invokeChat } from '@/lib/llm';
+import { invokeChat, streamChat } from '@/lib/llm';
 import type { QuoteEvidence, RankedQuoteEvidence } from '@/lib/sales-quote-copilot/quote-evidence-types';
 
 import type { ExtractedSearchTerms } from '@/lib/sales-quote-copilot/quote-evidence-types';
@@ -115,17 +115,12 @@ function fallbackRankEvidence(
     }));
 }
 
-/**
- * AI picks quote basis from a single evidence row (Item / Sales / Purchase).
- * Cost and sell price must come from the chosen row only — never mix sources.
- */
-export async function aiRankQuoteEvidence(
-  searchKeyword: string,
-  evidencePool: QuoteEvidence[],
-): Promise<RankedQuoteEvidence[]> {
-  if (evidencePool.length === 0) return [];
+export interface AiRankQuoteEvidenceResult {
+  ranked: RankedQuoteEvidence[];
+  thinking: string;
+}
 
-  const pool = evidencePool.slice(0, MAX_EVIDENCE_FOR_AI);
+function buildQuoteEvidenceRankPrompt(searchKeyword: string, pool: QuoteEvidence[]): string {
   const lines = pool.map((ev, i) => {
     const doc = ev.document.documentNo
       ? `${ev.document.documentType || 'Doc'} ${ev.document.documentNo}`
@@ -133,7 +128,7 @@ export async function aiRankQuoteEvidence(
     return `[${i}] id=${ev.id} source=${ev.source} item=${ev.itemNo} desc="${ev.description}" cost=${ev.unitCost} price=${ev.unitPrice} costSrc=${ev.costSource} priceSrc=${ev.priceSource} doc=${doc} rule=${ev.ruleConfidence} warnings=${ev.warnings.join('; ') || 'none'}`;
   });
 
-  const prompt = `You are a B2B industrial quoting assistant for Allinton Engineering (fasteners, castors, valves, hardware).
+  return `You are a B2B industrial quoting assistant for Allinton Engineering (fasteners, castors, valves, hardware).
 
 Customer RFQ line: "${searchKeyword}"
 
@@ -150,46 +145,128 @@ Rules:
 Candidates:
 ${lines.join('\n')}
 
-Respond ONLY with JSON array (no markdown):
-[{"index":0,"score":88,"reason":"Exact flat wheel 4in match on item master"}]`;
+Respond ONLY with a single JSON object (no markdown):
+{"thinking":"2-6 sentences in English: what the customer wants, which candidates you compared, why the top pick wins","rankings":[{"index":0,"score":88,"reason":"Exact flat wheel 4in match on item master"}]}`;
+}
+
+function rankingsToRankedEvidence(
+  pool: QuoteEvidence[],
+  rankings: Array<{ index: number; score: number; reason: string }>,
+): RankedQuoteEvidence[] {
+  const ranked: RankedQuoteEvidence[] = [];
+  const used = new Set<number>();
+
+  for (const r of rankings) {
+    if (r.index < 0 || r.index >= pool.length || r.score <= 0 || used.has(r.index)) continue;
+    used.add(r.index);
+    ranked.push({
+      ...pool[r.index],
+      confidence: r.score,
+      reason: r.reason,
+    });
+    if (ranked.length >= MAX_RANKED_OUT) break;
+  }
+
+  return ranked;
+}
+
+function parseQuoteEvidenceRankResponse(
+  text: string,
+  pool: QuoteEvidence[],
+): AiRankQuoteEvidenceResult {
+  const trimmed = text.trim();
+  const objectMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    try {
+      const parsed = JSON.parse(objectMatch[0]) as {
+        thinking?: string;
+        rankings?: Array<{ index: number; score: number; reason: string }>;
+      };
+      const thinking =
+        typeof parsed.thinking === 'string' && parsed.thinking.trim()
+          ? parsed.thinking.trim()
+          : '';
+      if (Array.isArray(parsed.rankings)) {
+        const ranked = rankingsToRankedEvidence(pool, parsed.rankings);
+        if (ranked.length > 0) {
+          return { ranked, thinking };
+        }
+      }
+    } catch {
+      // fall through to legacy array format
+    }
+  }
+
+  const arrayMatch = trimmed.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      const rankings = JSON.parse(arrayMatch[0]) as Array<{
+        index: number;
+        score: number;
+        reason: string;
+      }>;
+      const ranked = rankingsToRankedEvidence(pool, rankings);
+      if (ranked.length > 0) {
+        return { ranked, thinking: '' };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const fallback = fallbackRankEvidence(pool);
+  return {
+    ranked: fallback,
+    thinking: fallback[0]?.reason
+      ? `Rule-based fallback: ${fallback[0].reason}`
+      : 'Rule-based fallback ranking (AI response could not be parsed).',
+  };
+}
+
+const QUOTE_EVIDENCE_RANK_SYSTEM =
+  'Return only valid JSON. Pick single evidence rows; never merge cost/price across sources. Include a concise thinking field.';
+
+/**
+ * AI picks quote basis from a single evidence row (Item / Sales / Purchase).
+ * Cost and sell price must come from the chosen row only — never mix sources.
+ */
+export async function aiRankQuoteEvidence(
+  searchKeyword: string,
+  evidencePool: QuoteEvidence[],
+  options?: { onAiDelta?: (delta: string) => void },
+): Promise<AiRankQuoteEvidenceResult> {
+  if (evidencePool.length === 0) {
+    return { ranked: [], thinking: '' };
+  }
+
+  const pool = evidencePool.slice(0, MAX_EVIDENCE_FOR_AI);
+  const prompt = buildQuoteEvidenceRankPrompt(searchKeyword, pool);
+  const messages = [
+    { role: 'system' as const, content: QUOTE_EVIDENCE_RANK_SYSTEM },
+    { role: 'user' as const, content: prompt },
+  ];
 
   try {
-    const response = await invokeChat(
-      [
-        {
-          role: 'system' as const,
-          content:
-            'Return only a valid JSON array. Pick single evidence rows; never merge cost/price across sources.',
-        },
-        { role: 'user' as const, content: prompt },
-      ],
-      { temperature: 0.1 },
-    );
-
-    const text = response.content.trim();
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return fallbackRankEvidence(pool);
-
-    const rankings: Array<{ index: number; score: number; reason: string }> = JSON.parse(jsonMatch[0]);
-    const ranked: RankedQuoteEvidence[] = [];
-    const used = new Set<number>();
-
-    for (const r of rankings) {
-      if (r.index < 0 || r.index >= pool.length || r.score <= 0 || used.has(r.index)) continue;
-      used.add(r.index);
-      ranked.push({
-        ...pool[r.index],
-        confidence: r.score,
-        reason: r.reason,
-      });
-      if (ranked.length >= MAX_RANKED_OUT) break;
+    let text = '';
+    if (options?.onAiDelta) {
+      for await (const chunk of streamChat(messages, { temperature: 0.1 })) {
+        if (!chunk.content) continue;
+        text += chunk.content;
+        options.onAiDelta(chunk.content);
+      }
+    } else {
+      const response = await invokeChat(messages, { temperature: 0.1 });
+      text = response.content;
     }
 
-    if (ranked.length > 0) return ranked;
-    return fallbackRankEvidence(pool);
+    return parseQuoteEvidenceRankResponse(text, pool);
   } catch (error) {
     console.error('AI quote evidence ranking error:', error);
-    return fallbackRankEvidence(pool);
+    const ranked = fallbackRankEvidence(pool);
+    return {
+      ranked,
+      thinking: 'AI ranking unavailable; used rule-based confidence scores.',
+    };
   }
 }
 

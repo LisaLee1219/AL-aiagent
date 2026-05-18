@@ -36,6 +36,12 @@ import {
   recommendSuppliers,
 } from '@/lib/sales-quote-copilot/demo-data';
 import type { InternalMatchBundle } from '@/lib/sales-quote-copilot/internal-match-types';
+import {
+  applyInternalMatchProgressEvent,
+  consumeInternalMatchStream,
+  createInternalMatchLiveState,
+  type InternalMatchLiveState,
+} from '@/lib/sales-quote-copilot/internal-match-progress';
 import { InternalMatchPanel } from '@/components/sales-quote-copilot/InternalMatchPanel';
 import {
   ManualReviewDrawer,
@@ -147,6 +153,7 @@ export function SalesQuoteWorkflow() {
   const [matchMap, setMatchMap] = useState<Record<string, MatchCandidate[]>>({});
   const [internalMatchBundles, setInternalMatchBundles] = useState<InternalMatchBundle[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
+  const [matchProgress, setMatchProgress] = useState<InternalMatchLiveState | null>(null);
   const [supplierQuotes, setSupplierQuotes] = useState<SupplierQuote[]>([]);
   const [quoteLines, setQuoteLines] = useState<FinalQuoteLine[]>([]);
   const [reviewLineId, setReviewLineId] = useState<string | null>(null);
@@ -191,22 +198,85 @@ export function SalesQuoteWorkflow() {
     }
   }, [filteredEmails, expandedEmail, selectedEmail]);
 
+  const applyInternalMatchBundles = useCallback((bundles: InternalMatchBundle[]) => {
+    setMatchMap((prev) => {
+      const next: Record<string, MatchCandidate[]> = { ...prev };
+      const syncedBundles: InternalMatchBundle[] = [];
+
+      bundles.forEach((b) => {
+        const prevLine = prev[b.lineId] || [];
+        const prevSelected = prevLine.find((c) => c.selected);
+        let ranked = b.rankedCandidates.map((c) => {
+          const wasSelected = prevLine.find((p) => p.id === c.id)?.selected;
+          if (wasSelected) return { ...c, selected: true };
+          if (prevSelected && c.item_no === prevSelected.item_no) {
+            return { ...c, selected: true };
+          }
+          return c;
+        });
+        if (prevSelected && !ranked.some((c) => c.selected)) {
+          const fallback = ranked.find((c) => c.item_no === prevSelected.item_no) ?? ranked[0];
+          if (fallback) {
+            ranked = ranked.map((c) => ({ ...c, selected: c.id === fallback.id }));
+          }
+        } else if (!prevSelected && !ranked.some((c) => c.selected) && ranked.length > 0) {
+          ranked = ranked.map((c, i) => ({ ...c, selected: i === 0 }));
+        }
+        next[b.lineId] = ranked;
+        syncedBundles.push({ ...b, rankedCandidates: ranked });
+      });
+
+      setInternalMatchBundles(syncedBundles);
+      return next;
+    });
+
+    setProductSearchResults(
+      bundles.map((b) => ({
+        searchKeyword: b.originalText,
+        status: b.bestMatch && b.bestMatch.confidence_score >= 70 ? 'matched' : 'partial_match',
+        statusMessage: b.bestMatch?.confidence_reason || '',
+        products: b.rankedCandidates.map((c) => ({
+          id: c.id,
+          sku: c.item_no,
+          name: c.description,
+          category: c.matched_specs[0] || '',
+          costPrice: c.cost,
+          listPrice: c.suggested_selling_price,
+          stock: c.available_stock ?? 0,
+          leadTime: '',
+          minOrderQty: 1,
+          relevanceScore: c.confidence_score,
+          relevanceReason: c.confidence_reason,
+        })),
+        historicalOrders: [],
+      })),
+    );
+
+    if (bundles.every((b) => b.rankedCandidates.length === 0)) {
+      setAiParseNotice(
+        'Internal Match completed, but BC returned no usable candidates for the current RFQ wording.',
+      );
+    }
+  }, []);
+
   const runInternalMatch = useCallback(
     async (lines: RequestedItem[], company: string) => {
       setMatchLoading(true);
       setAiParseNotice(null);
+      const payload = lines.map((it) => ({
+        lineId: it.line_id,
+        originalText: it.original_text,
+        quantity: it.quantity,
+        uom: it.uom,
+        productType: it.product_type,
+        specsSummary: Object.values(it.specs)
+          .filter(Boolean)
+          .join(' · '),
+      }));
+      setMatchProgress(createInternalMatchLiveState(payload.length));
+
       try {
-        const payload = lines.map((it) => ({
-          lineId: it.line_id,
-          originalText: it.original_text,
-          quantity: it.quantity,
-          uom: it.uom,
-          productType: it.product_type,
-          specsSummary: Object.values(it.specs)
-            .filter(Boolean)
-            .join(' · '),
-        }));
-        const res = await fetch('/api/sales/internal-match', {
+        const res = await fetch('/api/sales/internal-match/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items: payload, customerName: company }),
@@ -214,72 +284,33 @@ export function SalesQuoteWorkflow() {
         if (!res.ok) {
           throw new Error(await readApiErrorMessage(res, 'Internal Match failed'));
         }
-        const data = await res.json();
-        if (!data.success || !data.data) {
-          throw new Error(data.error || 'Internal Match returned no data');
-        }
-        const bundles = data.data as InternalMatchBundle[];
-        setMatchMap((prev) => {
-          const next: Record<string, MatchCandidate[]> = { ...prev };
-          const syncedBundles: InternalMatchBundle[] = [];
 
-          bundles.forEach((b) => {
-            const prevLine = prev[b.lineId] || [];
-            const prevSelected = prevLine.find((c) => c.selected);
-            let ranked = b.rankedCandidates.map((c) => {
-              const wasSelected = prevLine.find((p) => p.id === c.id)?.selected;
-              if (wasSelected) return { ...c, selected: true };
-              if (prevSelected && c.item_no === prevSelected.item_no) {
-                return { ...c, selected: true };
-              }
-              return c;
-            });
-            if (prevSelected && !ranked.some((c) => c.selected)) {
-              const fallback = ranked.find((c) => c.item_no === prevSelected.item_no) ?? ranked[0];
-              if (fallback) {
-                ranked = ranked.map((c) => ({ ...c, selected: c.id === fallback.id }));
-              }
-            } else if (!prevSelected && !ranked.some((c) => c.selected) && ranked.length > 0) {
-              ranked = ranked.map((c, i) => ({ ...c, selected: i === 0 }));
-            }
-            next[b.lineId] = ranked;
-            syncedBundles.push({ ...b, rankedCandidates: ranked });
-          });
+        let finalBundles: InternalMatchBundle[] = [];
 
-          setInternalMatchBundles(syncedBundles);
-          return next;
+        await consumeInternalMatchStream(res, (event) => {
+          if (event.type === 'error') {
+            throw new Error(event.message);
+          }
+          if (event.type === 'complete') {
+            finalBundles = event.bundles;
+          }
+          setMatchProgress((prev) =>
+            prev ? applyInternalMatchProgressEvent(prev, event) : prev,
+          );
         });
-        setProductSearchResults(
-          bundles.map((b) => ({
-            searchKeyword: b.originalText,
-            status: b.bestMatch && b.bestMatch.confidence_score >= 70 ? 'matched' : 'partial_match',
-            statusMessage: b.bestMatch?.confidence_reason || '',
-            products: b.rankedCandidates.map((c) => ({
-              id: c.id,
-              sku: c.item_no,
-              name: c.description,
-              category: c.matched_specs[0] || '',
-              costPrice: c.cost,
-              listPrice: c.suggested_selling_price,
-              stock: c.available_stock ?? 0,
-              leadTime: '',
-              minOrderQty: 1,
-              relevanceScore: c.confidence_score,
-              relevanceReason: c.confidence_reason,
-            })),
-            historicalOrders: [],
-          })),
-        );
-        if (bundles.every((b) => b.rankedCandidates.length === 0)) {
-          setAiParseNotice('Internal Match completed, but BC returned no usable candidates for the current RFQ wording.');
+
+        if (finalBundles.length === 0) {
+          throw new Error('Internal Match returned no data');
         }
+        applyInternalMatchBundles(finalBundles);
       } catch (error) {
         setAiParseNotice(error instanceof Error ? error.message : 'Internal Match failed');
       } finally {
         setMatchLoading(false);
+        setMatchProgress(null);
       }
     },
-    [],
+    [applyInternalMatchBundles],
   );
 
   const handleSelectMatchCandidate = (
@@ -885,6 +916,7 @@ export function SalesQuoteWorkflow() {
             <InternalMatchPanel
               bundles={internalMatchBundles}
               loading={matchLoading}
+              progress={matchProgress}
               onSelectCandidate={handleSelectMatchCandidate}
             />
             {!matchLoading && internalMatchBundles.length === 0 && (

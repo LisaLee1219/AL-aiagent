@@ -32,6 +32,7 @@ import type {
   BcSalesHistoryRow,
   InternalMatchBundle,
 } from './internal-match-types';
+import type { InternalMatchProgressEvent } from './internal-match-progress';
 
 function stockForSku(sku: string): number {
   return mockERPProducts.find((p) => p.sku === sku)?.stock ?? 0;
@@ -231,12 +232,30 @@ export interface InternalMatchInputLine {
   specsSummary: string;
 }
 
+export type InternalMatchProgressEmitter = (event: InternalMatchProgressEvent) => void;
+
+function emitLog(
+  onProgress: InternalMatchProgressEmitter | undefined,
+  lineId: string,
+  message: string,
+) {
+  onProgress?.({ type: 'log', lineId, message });
+}
+
 export async function buildInternalMatchBundle(
   line: InternalMatchInputLine,
   customerName?: string,
+  onProgress?: InternalMatchProgressEmitter,
 ): Promise<InternalMatchBundle> {
   const keyword = line.originalText;
   const terms = extractSearchTerms(keyword);
+  let aiAnalysis = '';
+
+  emitLog(
+    onProgress,
+    line.lineId,
+    `Search terms: ${terms.allTerms.join(', ') || keyword}`,
+  );
 
   let dataSource: InternalMatchBundle['dataSource'] = 'mock';
   let itemMaster: BcItemMasterRow[] = [];
@@ -253,6 +272,7 @@ export async function buildInternalMatchBundle(
   if (bcReady) {
     try {
       dataSource = 'business_central';
+      emitLog(onProgress, line.lineId, 'Querying Business Central (items, sales, purchase)…');
       const bcItemsRaw = await queryBcItemsForTerms(terms).catch((e) => {
         console.warn('[internal-match] BC items query failed:', e);
         return [] as BCItem[];
@@ -323,7 +343,25 @@ export async function buildInternalMatchBundle(
       };
 
       evidenceCandidates = pool;
-      rankedEvidence = await aiRankQuoteEvidence(keyword, pool);
+      onProgress?.({
+        type: 'bc_result',
+        lineId: line.lineId,
+        items: bcFetch?.items ?? 0,
+        sales: bcFetch?.sales ?? 0,
+        purchases: bcFetch?.purchases ?? 0,
+        evidenceCount: pool.length,
+      });
+      emitLog(
+        onProgress,
+        line.lineId,
+        `Evidence pool: ${pool.length} rows — AI ranking in progress…`,
+      );
+      const aiResult = await aiRankQuoteEvidence(keyword, pool, {
+        onAiDelta: (text) => onProgress?.({ type: 'ai_delta', lineId: line.lineId, text }),
+      });
+      aiAnalysis = aiResult.thinking;
+      onProgress?.({ type: 'ai_done', lineId: line.lineId, thinking: aiAnalysis });
+      rankedEvidence = aiResult.ranked;
       ({ rankedEvidence, rankedCandidates, bestMatch } = toRankedMatch(line.lineId, rankedEvidence));
     } catch {
       dataSource = 'mock_fallback';
@@ -332,6 +370,11 @@ export async function buildInternalMatchBundle(
 
   if (!bcReady || dataSource === 'mock_fallback') {
     if (dataSource !== 'mock_fallback') dataSource = 'mock';
+    emitLog(
+      onProgress,
+      line.lineId,
+      bcReady ? 'BC error — using mock fallback data' : 'BC not configured — using demo data',
+    );
     const mockItems = mockBcItems(terms);
     const mockSales = mockSalesLines(keyword, customerName);
     const mockPurchases = mockPurchaseLines(keyword);
@@ -349,7 +392,25 @@ export async function buildInternalMatchBundle(
     salesHistory = panels.salesHistory;
     purchaseHistory = panels.purchaseHistory;
     evidenceCandidates = pool;
-    rankedEvidence = await aiRankQuoteEvidence(keyword, pool);
+    onProgress?.({
+      type: 'bc_result',
+      lineId: line.lineId,
+      items: itemMaster.length,
+      sales: salesHistory.length,
+      purchases: purchaseHistory.length,
+      evidenceCount: pool.length,
+    });
+    emitLog(
+      onProgress,
+      line.lineId,
+      `Evidence pool: ${pool.length} rows — AI ranking in progress…`,
+    );
+    const aiResult = await aiRankQuoteEvidence(keyword, pool, {
+      onAiDelta: (text) => onProgress?.({ type: 'ai_delta', lineId: line.lineId, text }),
+    });
+    aiAnalysis = aiResult.thinking;
+    onProgress?.({ type: 'ai_done', lineId: line.lineId, thinking: aiAnalysis });
+    rankedEvidence = aiResult.ranked;
     ({ rankedEvidence, rankedCandidates, bestMatch } = toRankedMatch(line.lineId, rankedEvidence));
   }
 
@@ -370,12 +431,35 @@ export async function buildInternalMatchBundle(
     dataSource,
     searchTerms: terms.allTerms,
     bcFetch,
+    aiAnalysis,
   };
 }
 
 export async function buildInternalMatchBundles(
   lines: InternalMatchInputLine[],
   customerName?: string,
+  onProgress?: InternalMatchProgressEmitter,
 ): Promise<InternalMatchBundle[]> {
-  return Promise.all(lines.map((line) => buildInternalMatchBundle(line, customerName)));
+  if (!onProgress) {
+    return Promise.all(lines.map((line) => buildInternalMatchBundle(line, customerName)));
+  }
+
+  onProgress({ type: 'start', total: lines.length, customerName });
+  const bundles: InternalMatchBundle[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    onProgress({
+      type: 'line_start',
+      lineIndex: i,
+      lineId: line.lineId,
+      label: line.originalText,
+    });
+    const bundle = await buildInternalMatchBundle(line, customerName, onProgress);
+    bundles.push(bundle);
+    onProgress({ type: 'line_done', lineIndex: i, bundle });
+  }
+
+  onProgress({ type: 'complete', bundles });
+  return bundles;
 }

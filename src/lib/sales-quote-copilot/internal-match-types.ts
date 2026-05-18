@@ -73,4 +73,6 @@ export interface InternalMatchBundle {
   searchTerms?: string[];
   /** How many rows BC returned and which fetch strategies succeeded */
   bcFetch?: BcFetchCounts;
+  /** AI step-by-step analysis for this RFQ line */
+  aiAnalysis?: string;
 }
