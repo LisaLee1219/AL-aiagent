@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invokeChat } from '@/lib/llm';
-import { webSearch, isWebSearchConfigured } from '@/lib/web-search';
+import { webSearch, isWebSearchConfigured, type WebSearchItem } from '@/lib/web-search';
+import { rankWebSearchResults } from '@/lib/web-search-rank';
+import type { WebSearchResultItem } from '@/lib/web-search-types';
 import { ensureEnvLoaded } from '@/lib/env-loader';
+
+const SG_COUNTRY = 'singapore';
 
 /**
  * POST /api/erp/web-search
- * Web search fallback: find suppliers, prices, and market research for products not found in ERP
+ * Singapore-first supplier research with relevance ranking (high → low)
  */
 export async function POST(request: NextRequest) {
   await ensureEnvLoaded();
@@ -19,85 +23,90 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const allResults: Array<{
-      title: string;
-      url: string;
-      snippet: string;
-      source: string;
-      isSupplierResult: boolean;
-    }> = [];
+    const rawResults: Array<WebSearchItem & { isSupplierResult: boolean }> = [];
 
     if (isWebSearchConfigured()) {
-      const supplierQuery = `${productName} supplier wholesale price Singapore Southeast Asia`;
-      const specQuery = `${productName} specification datasheet industrial`;
+      const sgSupplierQuery = `${productName} supplier distributor wholesale Singapore SGD`;
+      const sgSpecQuery = `${productName} specification datasheet industrial Singapore`;
+      const fallbackQuery = `${productName} supplier price Southeast Asia B2B`;
 
-      const [supplierItems, specItems] = await Promise.all([
-        webSearch(supplierQuery, 8),
-        webSearch(specQuery, 5),
+      const [sgSupplierItems, sgSpecItems] = await Promise.all([
+        webSearch(sgSupplierQuery, { maxResults: 10, country: SG_COUNTRY }),
+        webSearch(sgSpecQuery, { maxResults: 5, country: SG_COUNTRY }),
       ]);
 
       const seenUrls = new Set<string>();
 
-      for (const item of supplierItems) {
-        if (item.url && !seenUrls.has(item.url)) {
+      const pushItems = (
+        items: Awaited<ReturnType<typeof webSearch>>,
+        isSupplierResult: boolean,
+      ) => {
+        for (const item of items) {
+          if (!item.url || seenUrls.has(item.url)) continue;
           seenUrls.add(item.url);
-          allResults.push({
-            ...item,
-            isSupplierResult: true,
-          });
+          rawResults.push({ ...item, isSupplierResult });
         }
-      }
+      };
 
-      for (const item of specItems) {
-        if (item.url && !seenUrls.has(item.url)) {
-          seenUrls.add(item.url);
-          allResults.push({
-            ...item,
-            isSupplierResult: false,
-          });
-        }
+      pushItems(sgSupplierItems, true);
+      pushItems(sgSpecItems, false);
+
+      if (rawResults.length < 6) {
+        const fallbackItems = await webSearch(fallbackQuery, { maxResults: 6 });
+        pushItems(fallbackItems, true);
       }
+    }
+
+    let rankedResults: WebSearchResultItem[] = [];
+    if (rawResults.length > 0) {
+      rankedResults = await rankWebSearchResults(productName, rawResults);
     }
 
     let aiAnalysis = '';
     try {
-      if (allResults.length === 0 && !isWebSearchConfigured()) {
-        aiAnalysis =
-          'Web search is not configured. Add TAVILY_API_KEY to .env.local to enable supplier research (see .env.example).';
-      } else if (allResults.length === 0) {
-        aiAnalysis = 'No web results found for this product. Try refining the product name.';
+      if (allResultsEmpty(rawResults)) {
+        aiAnalysis = !isWebSearchConfigured()
+          ? 'Web search is not configured. Add TAVILY_API_KEY to .env.local (see .env.example).'
+          : 'No web results found for this product. Try refining the product name.';
       } else {
+        const topForPrompt = rankedResults.slice(0, 8);
         const analysisPrompt = `You are a B2B procurement research analyst for Allinton Engineering (Singapore).
 
 Product searched: "${productName}"
 ${context ? `Customer context: ${context}` : ''}
+Region priority: Singapore suppliers first, then Southeast Asia, then global.
 
-Web search results:
-${allResults.map((r, i) => `[${i + 1}] ${r.title}\n    Source: ${r.source} | URL: ${r.url}\n    ${r.snippet}`).join('\n\n')}
+Ranked web results (best match first):
+${topForPrompt
+  .map(
+    (r, i) =>
+      `[${i + 1}] score=${r.matchScore} region=${r.region} ${r.isSupplierResult ? 'supplier' : 'spec'}\n    ${r.title}\n    ${r.source} | ${r.url}\n    ${r.matchReason}\n    ${r.snippet.slice(0, 280)}`,
+  )
+  .join('\n\n')}
 
 Provide a concise research summary in this format:
 
-## Market Overview
-[1-2 sentences about product availability and market]
+## Market Overview (Singapore focus)
+[1-2 sentences — availability in Singapore / SEA]
 
-## Potential Suppliers
-[List 2-4 suppliers found with estimated price range if available]
-- **Supplier Name** — Price range (if found) — Notes
+## Recommended Suppliers (highest relevance first)
+[List suppliers from results above, Singapore first]
+- **Name** — Match score / region — Price note — URL hint
 
-## Price Indication
-[Estimated price range based on search results, or "Price not publicly available"]
+## Price Indication (SGD if available)
+[Estimated range or "not publicly listed"]
 
-## Recommendations
-[1-2 actionable next steps for the sales team]
+## Next Steps
+[1-2 actions for sales team]
 
-Keep it factual. Only include information found in search results. If no pricing found, say so.`;
+Use only facts from the results. Prefer Singapore sources when listing suppliers.`;
 
         const response = await invokeChat(
           [
             {
               role: 'system' as const,
               content:
-                'You are a professional B2B procurement researcher. Provide concise, factual analysis based on search results only. Do not fabricate data.',
+                'You are a Singapore-based B2B procurement researcher. Prioritize Singapore and .sg sources. Be factual.',
             },
             { role: 'user' as const, content: analysisPrompt },
           ],
@@ -108,19 +117,25 @@ Keep it factual. Only include information found in search results. If no pricing
       }
     } catch (error) {
       console.error('AI analysis error for web search:', error);
-      aiAnalysis = 'AI analysis unavailable. Please review the search results below manually.';
+      aiAnalysis = 'AI analysis unavailable. Please review the ranked results below.';
     }
+
+    const sgCount = rankedResults.filter((r) => r.region === 'singapore').length;
 
     return NextResponse.json({
       success: true,
       data: {
         productName,
-        searchResults: allResults.slice(0, 10),
-        supplierSummary: '',
+        searchResults: rankedResults.slice(0, 12),
+        supplierSummary:
+          sgCount > 0
+            ? `${sgCount} Singapore-prioritized result${sgCount > 1 ? 's' : ''}`
+            : '',
         specSummary: '',
         aiAnalysis,
-        totalResults: allResults.length,
+        totalResults: rankedResults.length,
         webSearchConfigured: isWebSearchConfigured(),
+        regionFocus: 'singapore' as const,
       },
     });
   } catch (error) {
@@ -136,9 +151,14 @@ Keep it factual. Only include information found in search results. If no pricing
           specSummary: '',
           aiAnalysis: 'Search unavailable. Please try again.',
           totalResults: 0,
+          regionFocus: 'singapore' as const,
         },
       },
       { status: 500 },
     );
   }
+}
+
+function allResultsEmpty(raw: unknown[]): boolean {
+  return raw.length === 0;
 }

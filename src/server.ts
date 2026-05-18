@@ -1,8 +1,10 @@
 import { config as loadEnv } from 'dotenv';
 import path from 'path';
 
-loadEnv({ path: path.join(process.cwd(), '.env.local') });
-loadEnv({ path: path.join(process.cwd(), '.env') });
+const devEnv =
+  process.env.NODE_ENV !== 'production' && process.env.COZE_PROJECT_ENV !== 'PROD';
+loadEnv({ path: path.join(process.cwd(), '.env.local'), override: devEnv });
+loadEnv({ path: path.join(process.cwd(), '.env'), override: devEnv });
 
 import { createServer } from 'http';
 import { parse } from 'url';

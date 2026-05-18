@@ -88,11 +88,15 @@ interface WebSearchData {
     snippet: string;
     source: string;
     isSupplierResult: boolean;
+    matchScore?: number;
+    matchReason?: string;
+    region?: 'singapore' | 'sea' | 'global';
   }>;
   supplierSummary: string;
   specSummary: string;
   aiAnalysis: string;
   totalResults: number;
+  regionFocus?: 'singapore';
 }
 
 type Step = 'email' | 'extract' | 'search' | 'history' | 'quote';

@@ -8,14 +8,19 @@ import { isWebSearchConfigured } from '@/lib/web-search';
 let envLoaded = false;
 let envLoadPromise: Promise<void> | null = null;
 
+const isDevRuntime = () =>
+  process.env.NODE_ENV !== 'production' && process.env.COZE_PROJECT_ENV !== 'PROD';
+
 export async function ensureEnvLoaded(): Promise<void> {
-  if (envLoaded) return;
-  if (envLoadPromise) {
+  // In dev, re-read .env.local so key changes apply without restarting the server.
+  if (envLoaded && !isDevRuntime()) return;
+  if (envLoadPromise && !isDevRuntime()) {
     await envLoadPromise;
     return;
   }
   envLoadPromise = loadEnvFiles();
   await envLoadPromise;
+  if (!isDevRuntime()) envLoaded = true;
 }
 
 async function loadEnvFiles(): Promise<void> {
@@ -23,12 +28,12 @@ async function loadEnvFiles(): Promise<void> {
     const path = await import('path');
     const { config } = await import('dotenv');
     const root = process.cwd();
-    config({ path: path.join(root, '.env.local') });
-    config({ path: path.join(root, '.env') });
+    const override = isDevRuntime();
+    config({ path: path.join(root, '.env.local'), override });
+    config({ path: path.join(root, '.env'), override });
   } catch {
     // dotenv optional if vars already in process.env
   }
-  envLoaded = true;
 }
 
 export function isBCConfiguredCheck(): boolean {

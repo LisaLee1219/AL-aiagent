@@ -1,4 +1,9 @@
 import { sourceBadgeLabel } from './logic';
+import {
+  countInternalMatchSelections,
+  countQuoteReadyLines,
+  isLineQuoteReady,
+} from './line-quote-status';
 import type {
   FinalQuoteLine,
   ManualPriceEntry,
@@ -6,6 +11,8 @@ import type {
   RequestedItem,
   SupplierQuote,
 } from './types';
+
+export { countInternalMatchSelections, countQuoteReadyLines, isLineQuoteReady };
 
 function resolveQuotePricing(
   selected: MatchCandidate | null,
@@ -43,7 +50,7 @@ function resolveQuotePricing(
   return { cost, sell, priceFlags: flags };
 }
 
-/** Quote Builder includes every line with an Internal Match checkbox selected (or confirmed manual price). */
+/** Quote lines: Internal Match selection, confirmed manual price, or supplier quote from sourcing. */
 export function buildQuoteLinesFromMatchSelections(
   items: RequestedItem[],
   matchMap: Record<string, MatchCandidate[]>,
@@ -62,10 +69,10 @@ export function buildQuoteLinesFromMatchSelections(
         ? [...selectedMatches].sort((a, b) => b.confidence_score - a.confidence_score)[0]
         : null;
 
-    if (!mp && !selected) continue;
-
     const sq = supplierQuotes.find((q) => q.requested_item_id === item.line_id);
-    const { cost, sell, priceFlags } = resolveQuotePricing(selected, mp, sq);
+    if (!mp && !selected && !sq) continue;
+
+    const { cost, sell, priceFlags } = resolveQuotePricing(selected, mp, selected ? undefined : sq);
     const margin = sell > 0 ? ((sell - cost) / sell) * 100 : 0;
     const useManual = !!mp;
     const qty = item.quantity || 1;
@@ -74,7 +81,7 @@ export function buildQuoteLinesFromMatchSelections(
       id: `ql-${item.line_id}`,
       requested_item_id: item.line_id,
       requested_label: item.original_text,
-      description: selected?.description || item.normalized_name,
+      description: selected?.description || item.normalized_name || item.original_text,
       source_type: useManual ? 'manual' : sq ? 'supplier_quote' : selected?.source_type || 'manual',
       source_label: useManual
         ? 'Manual Price'
@@ -93,6 +100,7 @@ export function buildQuoteLinesFromMatchSelections(
       approval_status: 'pending',
       risk_flags: [
         ...priceFlags,
+        ...(sq && !selected ? ['Supplier quote — not in BC item master'] : []),
         ...(useManual ? ['Manual price used'] : []),
         ...(cost === 0 && sell === 0 ? ['No price source — verify before sending'] : []),
         ...(cost === 0 && sell > 0 ? ['Cost is zero'] : []),
@@ -110,14 +118,11 @@ export function buildQuoteLinesFromMatchSelections(
   return lines;
 }
 
-/** Lines user marked selected in Internal Match (for UI counts). */
+/** @deprecated Use countQuoteReadyLines — includes supplier-sourced lines */
 export function countSelectedMatchLines(
   items: RequestedItem[],
   matchMap: Record<string, MatchCandidate[]>,
+  supplierQuotes: SupplierQuote[] = [],
 ): number {
-  return items.filter((item) => {
-    if (item.excluded) return false;
-    if (item.manual_price?.confirmed) return true;
-    return (matchMap[item.line_id] || []).some((m) => m.selected);
-  }).length;
+  return countQuoteReadyLines(items, matchMap, supplierQuotes);
 }

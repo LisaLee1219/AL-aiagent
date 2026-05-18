@@ -225,6 +225,7 @@ function MatchBundleCard({
   const aiMatches = [...bundle.rankedCandidates].sort(
     (a, b) => b.confidence_score - a.confidence_score,
   );
+  const hasSelection = bundle.rankedCandidates.some((m) => m.selected);
 
   const dataSourceLabel =
     bundle.dataSource === 'business_central'
@@ -260,9 +261,20 @@ function MatchBundleCard({
             </div>
           )}
         </dl>
-        <Badge variant="outline" className="w-fit text-[10px]">
-          Source: {dataSourceLabel}
-        </Badge>
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="outline" className="text-[10px]">
+            Source: {dataSourceLabel}
+          </Badge>
+          {hasSelection ? (
+            <Badge className="text-[10px] bg-foreground text-background hover:bg-foreground/90">
+              Selected for quote
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-[10px]">
+              Needs sourcing
+            </Badge>
+          )}
+        </div>
       </aside>
 
       <div className="p-4 space-y-3 bg-card min-w-0">

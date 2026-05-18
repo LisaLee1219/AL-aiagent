@@ -274,9 +274,9 @@ export function QuoteBuilderPanel({
       <div className="rounded-lg border border-dashed p-8 text-center space-y-2">
         <p className="text-sm font-medium">No quote lines yet</p>
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
-          Go to <strong>Internal Match</strong> and check the box next to each item you want to quote.
-          Only selected matches appear here ({selectedMatchCount} line
-          {selectedMatchCount === 1 ? '' : 's'} currently selected in match).
+          Select lines in <strong>Internal Match</strong> (BC) and/or add supplier unit costs in{' '}
+          <strong>Supplier Sourcing</strong>. {selectedMatchCount} line
+          {selectedMatchCount === 1 ? ' is' : 's are'} ready when priced.
         </p>
       </div>
     );
@@ -286,7 +286,7 @@ export function QuoteBuilderPanel({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs text-muted-foreground">
-          Showing {quoteLines.length} of {selectedMatchCount} selected line
+          Showing {quoteLines.length} of {selectedMatchCount} quote-ready line
           {selectedMatchCount === 1 ? '' : 's'} · Total{' '}
           {grandTotal > 0 ? formatMoney(grandTotal) : '— (fill Unit price in every row)'}
           {isDirty ? ' · edit table then click Apply to email' : ''}
@@ -298,8 +298,7 @@ export function QuoteBuilderPanel({
         )}
         {quoteLines.length < selectedMatchCount && (
           <p className="text-xs text-amber-700">
-            {selectedMatchCount - quoteLines.length} selected line(s) missing from this list — re-open Internal
-            Match and ensure each checked row has a match for that RFQ line.
+            {selectedMatchCount - quoteLines.length} line(s) still need a BC selection or supplier cost.
           </p>
         )}
       </div>

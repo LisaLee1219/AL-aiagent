@@ -49,10 +49,16 @@ import {
 } from '@/components/sales-quote-copilot/ManualReviewDrawer';
 import { ReadinessCheckActions } from '@/components/sales-quote-copilot/ReadinessCheckActions';
 import { QuoteBuilderPanel } from '@/components/sales-quote-copilot/QuoteBuilderPanel';
+import { SupplierSourcingPanel } from '@/components/sales-quote-copilot/SupplierSourcingPanel';
 import {
   buildQuoteLinesFromMatchSelections,
-  countSelectedMatchLines,
+  countInternalMatchSelections,
+  countQuoteReadyLines,
 } from '@/lib/sales-quote-copilot/build-quote-lines';
+import {
+  getLineQuoteSource,
+  needsSupplierSourcing,
+} from '@/lib/sales-quote-copilot/line-quote-status';
 import { readinessBadgeClass, readinessLabel } from '@/lib/sales-quote-copilot/logic';
 import type {
   BcSyncState,
@@ -444,14 +450,27 @@ export function SalesQuoteWorkflow() {
     setItems((prev) => prev.map((it) => (it.line_id === lineId ? { ...it, ...patch } : it)));
   };
 
-  const selectedMatchLineCount = useMemo(
-    () =>
-      items.filter((item) => {
-        if (item.excluded) return false;
-        if (item.manual_price?.confirmed) return true;
-        return (matchMap[item.line_id] || []).some((m) => m.selected);
-      }).length,
+  const internalMatchSelectedCount = useMemo(
+    () => countInternalMatchSelections(items, matchMap),
     [items, matchMap],
+  );
+
+  const quoteReadyCount = useMemo(
+    () => countQuoteReadyLines(items, matchMap, supplierQuotes),
+    [items, matchMap, supplierQuotes],
+  );
+
+  const internalReadyLineIds = useMemo(
+    () =>
+      items
+        .filter((item) => getLineQuoteSource(item, matchMap, supplierQuotes) === 'internal_match')
+        .map((item) => item.line_id),
+    [items, matchMap, supplierQuotes],
+  );
+
+  const sourcingLineIds = useMemo(
+    () => items.filter((item) => needsSupplierSourcing(item, matchMap, supplierQuotes)).map((i) => i.line_id),
+    [items, matchMap, supplierQuotes],
   );
 
   const refreshQuoteLines = useCallback(() => {
@@ -522,17 +541,10 @@ export function SalesQuoteWorkflow() {
     setCurrentStep('sourcing');
   };
 
-  const sourcingItems = useMemo(
-    () =>
-      items.filter(
-        (it) =>
-          !it.excluded &&
-          (it.readiness_status === 'need_sourcing' ||
-            it.readiness_status === 'need_clarification' ||
-            (matchMap[it.line_id]?.every((m) => m.confidence_score < 40) ?? true)),
-      ),
-    [items, matchMap],
-  );
+  const goToQuoteBuilder = useCallback(() => {
+    refreshQuoteLines();
+    setCurrentStep('builder');
+  }, [refreshQuoteLines]);
 
   return (
     <div className="space-y-6">
@@ -930,19 +942,34 @@ export function SalesQuoteWorkflow() {
                 Run match again
               </Button>
             )}
+            {!matchLoading && internalMatchBundles.length > 0 && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  <strong className="text-foreground">{internalMatchSelectedCount}</strong> BC selected
+                </span>
+                <span>
+                  <strong className="text-foreground">{sourcingLineIds.length}</strong> need supplier / web
+                </span>
+                <span>
+                  <strong className="text-foreground">{quoteReadyCount}</strong> ready for quote
+                </span>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
-              <Button disabled={matchLoading} onClick={() => setCurrentStep('sourcing')}>
+              <Button
+                variant="outline"
+                disabled={matchLoading || sourcingLineIds.length === 0}
+                onClick={() => setCurrentStep('sourcing')}
+              >
                 Supplier Sourcing
+                {sourcingLineIds.length > 0 ? ` (${sourcingLineIds.length})` : ''}
               </Button>
               <Button
                 variant="default"
-                disabled={matchLoading || selectedMatchLineCount === 0}
-                onClick={() => {
-                  refreshQuoteLines();
-                  setCurrentStep('builder');
-                }}
+                disabled={matchLoading || quoteReadyCount === 0}
+                onClick={goToQuoteBuilder}
               >
-                Quote Builder ({selectedMatchLineCount} selected)
+                Quote Builder ({quoteReadyCount} line{quoteReadyCount === 1 ? '' : 's'})
               </Button>
             </div>
           </CardContent>
@@ -951,23 +978,46 @@ export function SalesQuoteWorkflow() {
 
       {currentStep === 'sourcing' && (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-purple-600" />Supplier Sourcing</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base font-medium">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              Supplier Sourcing
+            </CardTitle>
+            <CardDescription>
+              Lines not in BC or not selected in Internal Match — contact suppliers, run web search, then add
+              unit cost. BC-selected lines are remembered and merge in Quote Builder.
+            </CardDescription>
+          </CardHeader>
           <CardContent className="space-y-4">
-            {sourcingItems.map((it) => recommendSuppliers(it.product_type).slice(0, 1).map((sup) => (
-              <div key={it.line_id} className="border p-3 rounded text-sm">
-                <p className="font-medium">{it.original_text} → {sup.name}</p>
-                <Button size="sm" className="mt-2" onClick={() => setSupplierQuotes((q) => [...q, { id: `sq-${Date.now()}`, requested_item_id: it.line_id, supplier_id: sup.id, supplier_name: sup.name, supplier_price: 15, currency: 'SGD', lead_time: sup.typical_lead_time, moq: sup.moq, validity_date: '2025-06-30', notes: '' }])}>Add Supplier Quote</Button>
+            {rfqDraft && (
+              <div className="rounded-md border p-3 text-xs">
+                <p className="font-medium mb-2">Supplier RFQ draft</p>
+                <pre className="whitespace-pre-wrap text-muted-foreground">{rfqDraft}</pre>
               </div>
-            )))}
-            <Button
-              disabled={selectedMatchLineCount === 0}
-              onClick={() => {
-                refreshQuoteLines();
-                setCurrentStep('builder');
-              }}
-            >
-              Quote Builder ({selectedMatchLineCount} selected)
-            </Button>
+            )}
+            <SupplierSourcingPanel
+              items={items}
+              matchMap={matchMap}
+              supplierQuotes={supplierQuotes}
+              sourcingLineIds={sourcingLineIds}
+              internalReadyLineIds={internalReadyLineIds}
+              onAddSupplierQuote={(q) => setSupplierQuotes((prev) => [...prev, q])}
+              onUpdateSupplierQuote={(id, patch) =>
+                setSupplierQuotes((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)))
+              }
+              onRemoveSupplierQuote={(id) =>
+                setSupplierQuotes((prev) => prev.filter((q) => q.id !== id))
+              }
+              onRfqDraft={setRfqDraft}
+            />
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
+              <Button variant="outline" onClick={() => setCurrentStep('match')}>
+                Back to Internal Match
+              </Button>
+              <Button disabled={quoteReadyCount === 0} onClick={goToQuoteBuilder}>
+                Quote Builder ({quoteReadyCount} line{quoteReadyCount === 1 ? '' : 's'})
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -980,8 +1030,8 @@ export function SalesQuoteWorkflow() {
               Quote Builder
             </CardTitle>
             <CardDescription>
-              Only lines you checked in Internal Match appear here. Customer reply mirrors the original RFQ email
-              format.
+              BC selections and supplier-sourced lines are combined here. Customer reply mirrors the original RFQ
+              email format.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -989,7 +1039,7 @@ export function SalesQuoteWorkflow() {
               quoteLines={quoteLines}
               rfq={rfq}
               selectedEmail={selectedEmail}
-              selectedMatchCount={selectedMatchLineCount}
+              selectedMatchCount={quoteReadyCount}
               onQuoteLinesChange={setQuoteLines}
             />
             <Button className="mt-2" disabled={!quoteLines.length} onClick={() => setCurrentStep('bc-quote')}>
