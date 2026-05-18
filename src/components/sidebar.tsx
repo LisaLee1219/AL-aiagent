@@ -33,12 +33,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 const departments = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, color: 'text-slate-600', bg: 'bg-slate-100' },
-  { name: 'Sales', href: '/sales', icon: Briefcase, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { name: 'Procurement', href: '/procurement', icon: ShoppingCart, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-  { name: 'Logistics', href: '/logistics', icon: Truck, color: 'text-orange-600', bg: 'bg-orange-50' },
-  { name: 'Finance', href: '/finance', icon: DollarSign, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { name: 'Marketing', href: '/marketing', icon: Megaphone, color: 'text-pink-600', bg: 'bg-pink-50' },
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Sales', href: '/sales', icon: Briefcase },
+  { name: 'Procurement', href: '/procurement', icon: ShoppingCart },
+  { name: 'Logistics', href: '/logistics', icon: Truck },
+  { name: 'Finance', href: '/finance', icon: DollarSign },
+  { name: 'Marketing', href: '/marketing', icon: Megaphone },
 ];
 
 interface SessionInfo {
@@ -121,8 +121,8 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex-shrink-0">
-          <Sparkles className="w-4 h-4" />
+        <div className="flex items-center justify-center w-8 h-8 rounded-md border bg-muted/50 flex-shrink-0">
+          <Sparkles className="w-4 h-4 text-muted-foreground" />
         </div>
         {!collapsed && (
           <span className="font-semibold text-sm truncate">AI Smart Workspace</span>
@@ -139,13 +139,13 @@ export function Sidebar() {
               key={dept.href}
               href={dept.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                 isActive
-                  ? `${dept.bg} ${dept.color} shadow-sm`
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                  ? 'bg-muted font-medium text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
               )}
             >
-              <Icon className={cn('w-5 h-5 flex-shrink-0', isActive ? dept.color : '')} />
+              <Icon className="w-4 h-4 flex-shrink-0 opacity-70" />
               {!collapsed && <span className="truncate">{dept.name}</span>}
             </Link>
           );

@@ -7,11 +7,8 @@
 import { NextRequest } from 'next/server';
 import { invokeChat, streamChat, type ChatMessage } from '@/lib/llm';
 import { ensureEnvLoaded } from '@/lib/env-loader';
-import {
-  AgentType,
-  AGENT_CONFIG,
-  TOOL_USAGE_PROMPT,
-} from '@/lib/agent-config';
+import type { AgentType } from '@/lib/agent-config';
+import { prepareAgentChatMessages } from '@/lib/agent-chat-prepare';
 import {
   parseToolCalls,
   stripToolCalls,
@@ -42,25 +39,12 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Messages are required' }, { status: 400 });
     }
 
-    const config = AGENT_CONFIG[agent];
-    if (!config) {
-      return Response.json({ error: `Unknown agent: ${agent}` }, { status: 400 });
-    }
-
-    const systemPrompt = config.systemPrompt + TOOL_USAGE_PROMPT;
-
-    const llmMessages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-    ];
+    const prepared = await prepareAgentChatMessages(messages, agent);
 
     if (stream) {
-      return handleStreaming(llmMessages, agent);
+      return handleStreaming(prepared.messages, prepared.agent, prepared.prefetchTools);
     }
-    return handleNonStreaming(llmMessages, agent);
+    return handleNonStreaming(prepared.messages, prepared.agent);
   } catch (error) {
     console.error('[Agent Chat API Error]', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
@@ -68,7 +52,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleStreaming(messages: ChatMessage[], agent: string) {
+async function handleStreaming(
+  messages: ChatMessage[],
+  agent: string,
+  prefetchTools: string[] = [],
+) {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -78,6 +66,9 @@ async function handleStreaming(messages: ChatMessage[], agent: string) {
       };
 
       try {
+        if (prefetchTools.length > 0) {
+          send('meta', { agent, phase: 'loading_data', tools: prefetchTools });
+        }
         send('meta', { agent, phase: 'thinking' });
 
         let fullText = '';
@@ -119,7 +110,8 @@ async function handleStreaming(messages: ChatMessage[], agent: string) {
 
         send('done', { agent });
       } catch (error) {
-        send('error', { message: String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        send('error', { message });
       } finally {
         controller.close();
       }

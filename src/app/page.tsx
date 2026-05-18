@@ -9,153 +9,122 @@ import {
   DollarSign,
   Megaphone,
   ArrowRight,
-  TrendingUp,
-  Package,
-  Target,
   Bot,
-  Layers,
   Database,
   Wrench,
+  Layers,
+  type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 const departments = [
   {
-    name: 'Sales Quote Copilot',
+    name: 'Sales',
     href: '/sales',
     icon: Briefcase,
-    color: 'from-blue-500 to-blue-600',
-    lightColor: 'bg-blue-50',
-    textColor: 'text-blue-600',
-    description: 'Extract customer requirements, check BC inventory and past prices, source supplier quotes, compare margin, and generate salesperson-approved quotations.',
-    features: ['RFQ Readiness Check', 'BC Internal Match', 'Supplier Sourcing', 'BC Quote'],
-    stats: { label: 'Pending RFQs', value: '3', trend: 'Live demo' },
+    description: 'RFQ extraction, BC matching, supplier sourcing, and quotation builder.',
+    stat: '3 pending RFQs',
   },
   {
     name: 'Procurement',
     href: '/procurement',
     icon: ShoppingCart,
-    color: 'from-emerald-500 to-emerald-600',
-    lightColor: 'bg-emerald-50',
-    textColor: 'text-emerald-600',
-    description: 'Intelligent supplier comparison, automated PO generation, and inventory alerts',
-    features: ['Supplier Price Comparison', 'Smart Procurement Suggestions', 'Inventory Alert System', 'AI Contract Review'],
-    stats: { label: 'Inventory Alerts', value: '5', trend: '2 critical' },
+    description: 'Supplier comparison, purchase orders, and inventory alerts.',
+    stat: '5 inventory alerts',
   },
   {
     name: 'Logistics',
     href: '/logistics',
     icon: Truck,
-    color: 'from-orange-500 to-orange-600',
-    lightColor: 'bg-orange-50',
-    textColor: 'text-orange-600',
-    description: 'Real-time shipment tracking, route optimization, and warehouse visualization',
-    features: ['Real-Time Tracking', 'Route Optimization', 'Warehouse Visualization', 'Smart Exception Handling'],
-    stats: { label: 'In Transit', value: '6', trend: '1 delayed' },
+    description: 'Shipment tracking, delivery planning, and warehouse visibility.',
+    stat: '6 in transit',
   },
   {
     name: 'Finance',
     href: '/finance',
     icon: DollarSign,
-    color: 'from-purple-500 to-purple-600',
-    lightColor: 'bg-purple-50',
-    textColor: 'text-purple-600',
-    description: 'AI invoice processing, receivables & payables management, and automated financial reports',
-    features: ['AI Invoice Recognition', 'AR/AP Tracking', 'Financial Report Generation', 'Anomaly Detection'],
-    stats: { label: 'Overdue AR', value: '$192K', trend: '1 overdue' },
+    description: 'Invoices, receivables & payables, and financial reporting.',
+    stat: '1 overdue AR',
   },
   {
     name: 'Marketing',
     href: '/marketing',
     icon: Megaphone,
-    color: 'from-pink-500 to-pink-600',
-    lightColor: 'bg-pink-50',
-    textColor: 'text-pink-600',
-    description: 'Campaign ROI analysis, AI lead scoring, and market trend insights',
-    features: ['Campaign ROI Analysis', 'AI Lead Scoring', 'Market Trend Insights', 'Content Recommendations'],
-    stats: { label: 'Hot Leads', value: '3', trend: '+2 this week' },
+    description: 'Campaign ROI, lead scoring, and market analysis.',
+    stat: '3 hot leads',
   },
 ];
 
-const architectureLayers = [
+const architectureLayers: {
+  title: string;
+  icon: LucideIcon;
+  items: string[];
+}[] = [
   {
     title: 'Master Agent',
     icon: Bot,
-    color: 'bg-violet-100 text-violet-700 border-violet-200',
-    items: ['Task Distribution', 'Cross-Dept Coordination', 'Status Tracking', 'Data Aggregation'],
+    items: ['Task routing', 'Cross-dept coordination', 'Status tracking'],
   },
   {
-    title: 'Department Agents',
+    title: 'Department agents',
     icon: Layers,
-    color: 'bg-blue-100 text-blue-700 border-blue-200',
-    items: ['Sales Agent', 'Procurement Agent', 'Logistics Agent', 'Finance Agent', 'Marketing Agent'],
+    items: ['Sales', 'Procurement', 'Logistics', 'Finance', 'Marketing'],
   },
   {
-    title: 'Shared Tools',
+    title: 'Shared tools',
     icon: Wrench,
-    color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    items: ['Document Parser', 'Data Query (BC)', 'Email Sender', 'Report Generator'],
+    items: ['BC data query', 'Document parse', 'Reports', 'Email'],
   },
   {
-    title: 'Shared Data',
+    title: 'Data',
     icon: Database,
-    color: 'bg-amber-100 text-amber-700 border-amber-200',
-    items: ['Products', 'Customers', 'Orders', 'Inventory', 'Suppliers'],
+    items: ['Products', 'Orders', 'Inventory', 'Customers'],
   },
 ];
 
 export default function HomePage() {
   return (
     <AppShell>
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center text-white">
-            <Bot className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">AI Smart Workspace</h1>
-            <p className="text-muted-foreground text-sm">
-              Multi-Agent Architecture — Orchestrated by Master Agent, Powered by Business Central
-            </p>
-          </div>
-        </div>
-      </div>
+      <header className="mb-8">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Workspace</h1>
+        <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
+          Master Agent with Business Central integration. Ask questions or open a department
+          workspace below.
+        </p>
+      </header>
 
-      {/* Main Layout: Agent Chat + Department Cards */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Left: Master Agent Chat (2/3 width) */}
         <div className="xl:col-span-2">
-          <div className="h-[600px]">
+          <div className="h-[560px]">
             <AgentChat defaultAgent="master" title="Master Agent" />
           </div>
         </div>
 
-        {/* Right: Architecture Overview + Quick Links (1/3 width) */}
         <div className="space-y-4">
-          {/* Architecture Diagram */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Architecture Overview</CardTitle>
+          <Card className="shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">System</CardTitle>
+              <CardDescription className="text-xs">Platform layout</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {architectureLayers.map((layer) => {
+            <CardContent className="space-y-4">
+              {architectureLayers.map((layer, index) => {
                 const LayerIcon = layer.icon;
                 return (
-                  <div key={layer.title} className={`rounded-lg border p-3 ${layer.color}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <LayerIcon className="h-4 w-4" />
-                      <span className="text-sm font-medium">{layer.title}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {layer.items.map((item) => (
-                        <Badge key={item} variant="outline" className="text-[10px] px-1.5 py-0 bg-white/60">
-                          {item}
-                        </Badge>
-                      ))}
+                  <div key={layer.title}>
+                    {index > 0 && <Separator className="mb-4" />}
+                    <div className="flex gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-muted/40">
+                        <LayerIcon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">{layer.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                          {layer.items.join(' · ')}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -163,16 +132,15 @@ export default function HomePage() {
             </CardContent>
           </Card>
 
-          {/* BC Connection Status */}
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                  <Database className="w-4 h-4 text-emerald-600" />
-                </div>
+          <Card className="shadow-none">
+            <CardContent className="py-4">
+              <div className="flex items-start gap-3">
+                <Database className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                 <div>
-                  <div className="text-sm font-medium">Business Central</div>
-                  <div className="text-xs text-emerald-600">Connected — Allinton Engineering</div>
+                  <p className="text-sm font-medium">Business Central</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Allinton Engineering & Trading Pte Ltd
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -180,34 +148,33 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Department Cards */}
-      <div className="mt-6">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">Department Workspaces</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <section className="mt-10">
+        <h2 className="text-sm font-medium text-foreground mb-4">Departments</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
           {departments.map((dept) => {
             const Icon = dept.icon;
             return (
-              <Card key={dept.name} className="group hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${dept.color} flex items-center justify-center text-white`}>
-                      <Icon className="w-4 h-4" />
+              <Card
+                key={dept.name}
+                className="shadow-none hover:border-foreground/20 transition-colors"
+              >
+                <CardHeader className="pb-2 space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted/30">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <CardTitle className="text-sm">{dept.name}</CardTitle>
+                    <CardTitle className="text-sm font-medium">{dept.name}</CardTitle>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p className="text-xs text-muted-foreground line-clamp-2">
+                  <CardDescription className="text-xs leading-relaxed line-clamp-2">
                     {dept.description}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-sm font-semibold ${dept.textColor}`}>{dept.stats.value}</span>
-                    <span className="text-[10px] text-muted-foreground">{dept.stats.label}</span>
-                  </div>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <p className="text-xs text-muted-foreground mb-3">{dept.stat}</p>
                   <Link href={dept.href}>
-                    <Button variant="ghost" size="sm" className="w-full text-xs gap-1 h-7">
+                    <Button variant="outline" size="sm" className="w-full h-8 text-xs font-normal">
                       Open
-                      <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      <ArrowRight className="w-3 h-3 ml-1 opacity-60" />
                     </Button>
                   </Link>
                 </CardContent>
@@ -215,63 +182,7 @@ export default function HomePage() {
             );
           })}
         </div>
-      </div>
-
-      {/* Stats Bar */}
-      <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-blue-600" />
-              </div>
-              <div>
-                <div className="text-xl font-bold">S$401K</div>
-                <div className="text-xs text-muted-foreground">Monthly Revenue</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <Package className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div>
-                <div className="text-xl font-bold">200</div>
-                <div className="text-xs text-muted-foreground">Sales Lines</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Target className="w-4 h-4 text-amber-600" />
-              </div>
-              <div>
-                <div className="text-xl font-bold">34%</div>
-                <div className="text-xs text-muted-foreground">Gross Margin</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-violet-600" />
-              </div>
-              <div>
-                <div className="text-xl font-bold">6</div>
-                <div className="text-xs text-muted-foreground">AI Agents Active</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      </section>
     </AppShell>
   );
 }

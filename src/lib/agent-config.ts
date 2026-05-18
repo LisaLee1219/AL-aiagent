@@ -348,7 +348,7 @@ export const AGENT_CONFIG: Record<AgentType, {
 export const TOOL_USAGE_PROMPT = `
 
 ## Tool Usage Instructions:
-When you need to look up data, you MUST indicate it in your response using this format:
+When you need ADDITIONAL data beyond what is already in the message, indicate it using this format:
 [TOOL:tool_name|param1=value1|param2=value2]
 
 For example:

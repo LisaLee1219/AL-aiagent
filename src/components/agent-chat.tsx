@@ -6,14 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AGENT_CONFIG, type AgentType } from '@/lib/agent-config';
+import { AgentMessageContent } from '@/components/agent-message-content';
 import {
   Bot,
   Send,
   Loader2,
   Wrench,
-  Sparkles,
   ChevronDown,
   X,
+  User,
 } from 'lucide-react';
 
 interface Message {
@@ -121,7 +122,10 @@ export function AgentChat({
             try {
               const data = JSON.parse(line.slice(6));
               
-              if (data.phase === 'thinking') {
+              if (data.phase === 'loading_data') {
+                setCurrentPhase('Loading live system data...');
+                setActiveTools(data.tools || []);
+              } else if (data.phase === 'thinking') {
                 setCurrentPhase('Thinking...');
               } else if (data.phase === 'executing_tools') {
                 setCurrentPhase('Fetching data...');
@@ -199,32 +203,13 @@ export function AgentChat({
 
   const config = AGENT_CONFIG[selectedAgent];
 
-  const colorMap: Record<string, string> = {
-    violet: 'bg-violet-100 text-violet-700 border-violet-200',
-    blue: 'bg-blue-100 text-blue-700 border-blue-200',
-    emerald: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    amber: 'bg-amber-100 text-amber-700 border-amber-200',
-    green: 'bg-green-100 text-green-700 border-green-200',
-    rose: 'bg-rose-100 text-rose-700 border-rose-200',
-  };
-
-  const dotColorMap: Record<string, string> = {
-    violet: 'bg-violet-500',
-    blue: 'bg-blue-500',
-    emerald: 'bg-emerald-500',
-    amber: 'bg-amber-500',
-    green: 'bg-green-500',
-    rose: 'bg-rose-500',
-  };
-
   return (
-    <Card className={compact ? 'border-0 shadow-none' : 'h-full flex flex-col'}>
+    <Card className={compact ? 'border-0 shadow-none' : 'h-full flex flex-col shadow-none'}>
       {/* Header */}
       <CardHeader className={`${compact ? 'px-3 py-2' : 'px-4 py-3'} border-b flex-shrink-0`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${dotColorMap[config.color]}`} />
-            <CardTitle className={`${compact ? 'text-sm' : 'text-base'} font-semibold`}>
+            <CardTitle className={`${compact ? 'text-sm' : 'text-base'} font-medium`}>
               {title || config.label}
             </CardTitle>
             {isStreaming && (
@@ -300,7 +285,8 @@ export function AgentChat({
                   ].map((suggestion) => (
                     <button
                       key={suggestion}
-                      className="text-xs px-2.5 py-1.5 rounded-full border hover:bg-accent transition-colors"
+                      type="button"
+                      className="text-xs px-3 py-1.5 rounded-md border bg-background text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left"
                       onClick={() => setInput(suggestion)}
                     >
                       {suggestion}
@@ -311,45 +297,68 @@ export function AgentChat({
             </div>
           )}
 
-          {messages.map((msg, i) => (
+          {messages.map((msg, i) => {
+            const isUser = msg.role === 'user';
+            const agentCfg =
+              msg.agent && msg.agent in AGENT_CONFIG
+                ? AGENT_CONFIG[msg.agent as AgentType]
+                : config;
+
+            return (
             <div
               key={i}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
             >
               <div
-                className={`max-w-[85%] rounded-lg ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground px-3 py-2'
-                    : 'bg-muted px-3 py-2'
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${
+                  isUser ? 'bg-muted' : 'bg-muted/40'
                 }`}
               >
-                {msg.role === 'assistant' && msg.agent && msg.agent !== 'master' && (
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] px-1.5 py-0 ${colorMap[AGENT_CONFIG[msg.agent as AgentType]?.color || 'violet']}`}
-                    >
-                      {AGENT_CONFIG[msg.agent as AgentType]?.icon} {AGENT_CONFIG[msg.agent as AgentType]?.label}
-                    </Badge>
+                {isUser ? (
+                  <User className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+              </div>
+              <div className={`min-w-0 max-w-[min(100%,42rem)] ${isUser ? 'flex flex-col items-end' : ''}`}>
+                {!isUser && (
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1.5 px-0.5">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {agentCfg.label}
+                    </span>
                     {msg.toolCalls && msg.toolCalls.length > 0 && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
                         <Wrench className="h-2.5 w-2.5 mr-0.5" />
                         {msg.toolCalls.join(', ')}
                       </Badge>
                     )}
                   </div>
                 )}
-                <div className={`text-sm whitespace-pre-wrap ${compact ? 'text-xs' : ''}`}>
-                  {msg.content || (
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      {currentPhase || 'Thinking...'}
-                    </span>
-                  )}
-                </div>
+              <div
+                className={
+                  isUser
+                    ? 'rounded-lg bg-muted px-3.5 py-2.5 text-foreground'
+                    : 'rounded-lg border bg-background px-3.5 py-3'
+                }
+              >
+                {msg.role === 'user' ? (
+                  <p className={`leading-relaxed ${compact ? 'text-xs' : 'text-sm'}`}>{msg.content}</p>
+                ) : msg.content ? (
+                  <AgentMessageContent
+                    content={msg.content}
+                    isStreaming={i === messages.length - 1 && isStreaming}
+                  />
+                ) : (
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    {currentPhase || 'Thinking...'}
+                  </span>
+                )}
+              </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </ScrollArea>
 
